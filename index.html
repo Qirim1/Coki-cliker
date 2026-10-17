@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cookie Clicker</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Полный запрет выделения и стандартных жестовых задержек */
+        *, *::before, *::after {
+            user-select: none !important;
+            -webkit-user-select: none !important;
+            -webkit-touch-callout: none !important;
+            touch-action: manipulation !important;
+            -webkit-tap-highlight-color: transparent !important;
+        }
+
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background: radial-gradient(circle at center, #fdf8f5 0%, #f7e7ce 40%, #e6caac 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            margin: 0;
+        }
+
+        /* Оптимизированный фон с вращающимися лучами */
+        .sunburst {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 200vmax;
+            height: 200vmax;
+            transform: translate(-50%, -50%);
+            background: repeating-conic-gradient(
+                from 0deg,
+                rgba(255, 255, 255, 0.12) 0deg 15deg,
+                transparent 15deg 30deg
+            );
+            animation: rotateSunburst 120s linear infinite;
+            pointer-events: none;
+            will-change: transform;
+        }
+
+        @keyframes rotateSunburst {
+            from { transform: translate(-50%, -50%) rotate(0deg); }
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        /* Контейнер печеньки и GPU-ускорение */
+        .cookie-wrapper {
+            transition: transform 0.08s cubic-bezier(0.1, 0.9, 0.2, 1);
+            filter: drop-shadow(0 15px 25px rgba(101, 52, 22, 0.2));
+            will-change: transform;
+            cursor: pointer;
+        }
+
+        .cookie-wrapper:active,
+        .cookie-wrapper.is-pressed {
+            transform: scale(0.91) !important;
+        }
+
+        /* Эффект пульсирующего свечения */
+        .cookie-glow {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255, 220, 150, 0.5) 0%, rgba(255, 255, 255, 0) 70%);
+            animation: pulseGlow 3s ease-in-out infinite alternate;
+            pointer-events: none;
+            will-change: transform, opacity;
+        }
+
+        @keyframes pulseGlow {
+            0% { transform: scale(0.95); opacity: 0.5; }
+            100% { transform: scale(1.2); opacity: 0.8; }
+        }
+
+        /* Всплывающий элемент +1 из пула */
+        .float-text {
+            position: absolute;
+            left: 0;
+            top: 0;
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: #ffffff;
+            text-shadow: 
+                2px 2px 0px #7c3f13,
+                -2px -2px 0px #7c3f13,
+                2px -2px 0px #7c3f13,
+                -2px 2px 0px #7c3f13;
+            pointer-events: none;
+            display: none;
+            z-index: 50;
+            will-change: transform, opacity;
+        }
+
+        /* Частица-крошка из пула */
+        .particle-crumb {
+            position: absolute;
+            left: 0;
+            top: 0;
+            border-radius: 3px;
+            pointer-events: none;
+            display: none;
+            z-index: 40;
+            will-change: transform, opacity;
+        }
+
+        /* Модальное окно подтверждения */
+        .modal-backdrop {
+            background-color: rgba(60, 30, 10, 0.4);
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-between min-h-screen p-4 overflow-hidden">
+
+    <!-- Фоновые лучи -->
+    <div class="sunburst"></div>
+
+    <!-- Контейнер для всплывающих элементов -->
+    <div id="fx-layer" class="fixed inset-0 pointer-events-none z-40 overflow-hidden"></div>
+
+    <!-- Верхний блок: Заголовок, Счётчик и Кнопка Сброса -->
+    <header class="relative z-30 flex flex-col items-center mt-4 md:mt-8 w-full max-w-sm">
+        <div class="flex items-center justify-between w-full px-4 mb-2">
+            <h1 class="text-lg md:text-xl font-bold text-amber-900/70 tracking-wider uppercase">
+                Печеньки
+            </h1>
+            <button id="reset-btn" class="bg-amber-900/10 hover:bg-amber-900/20 active:scale-95 text-amber-900/70 font-semibold px-3 py-1 rounded-xl text-xs transition-all border border-amber-900/20">
+                Сбросить
+            </button>
+        </div>
+        
+        <!-- Счётчик -->
+        <div class="bg-white/40 backdrop-blur-md border border-white/60 shadow-lg rounded-3xl px-8 py-3 flex items-center justify-center w-full">
+            <span id="score" class="text-5xl md:text-6xl font-bold text-amber-950 tracking-tight">
+                0
+            </span>
+        </div>
+    </header>
+
+    <!-- Центр: Аппетитная Печенька -->
+    <main class="relative z-30 flex items-center justify-center my-auto">
+        <div class="cookie-glow"></div>
+
+        <div id="cookie" class="cookie-wrapper relative w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96">
+            <svg viewBox="0 0 200 200" class="w-full h-full pointer-events-none">
+                <defs>
+                    <radialGradient id="cookieBase" cx="35%" cy="30%" r="70%">
+                        <stop offset="0%" stop-color="#f3c88b" />
+                        <stop offset="50%" stop-color="#d99b52" />
+                        <stop offset="100%" stop-color="#a46025" />
+                    </radialGradient>
+                    
+                    <radialGradient id="chocoChip" cx="35%" cy="35%" r="65%">
+                        <stop offset="0%" stop-color="#5a3118" />
+                        <stop offset="70%" stop-color="#361a0b" />
+                        <stop offset="100%" stop-color="#1f0e05" />
+                    </radialGradient>
+
+                    <filter id="innerShadow" x="-20%" y="-20%" width="140%" height="140%">
+                        <feDropShadow dx="1" dy="2" stdDeviation="1" flood-color="#000" flood-opacity="0.3"/>
+                    </filter>
+                </defs>
+
+                <!-- Основание печеньки -->
+                <path d="M 100 12 C 125 10, 148 18, 168 32 C 185 48, 192 70, 190 95 C 188 125, 178 152, 155 172 C 132 190, 105 192 80 188 C 52 184, 28 170, 15 145 C 2 118, 8 90, 20 65 C 35 35, 65 15, 100 12 Z" fill="url(#cookieBase)" />
+
+                <!-- Текстура запекания -->
+                <path d="M 45 40 Q 60 25 85 30" stroke="#fbe3bd" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.6"/>
+                <path d="M 130 45 Q 160 55 165 80" stroke="#884817" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.4"/>
+                <path d="M 30 110 Q 25 140 50 160" stroke="#884817" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.3"/>
+
+                <!-- Шоколадные кусочки -->
+                <path d="M 65 45 C 75 42, 82 50, 78 60 C 74 70, 60 68, 58 58 C 56 50, 58 46, 65 45 Z" fill="url(#chocoChip)" filter="url(#innerShadow)"/>
+                <path d="M 125 55 C 138 52, 145 62, 140 72 C 135 80, 120 78, 118 68 C 116 60, 118 56, 125 55 Z" fill="url(#chocoChip)" filter="url(#innerShadow)"/>
+                <path d="M 90 90 C 108 85, 118 100, 112 115 C 105 128, 85 125, 80 110 C 76 98, 80 92, 90 90 Z" fill="url(#chocoChip)" filter="url(#innerShadow)"/>
+                <path d="M 42 100 C 52 98, 58 108, 54 118 C 50 126, 36 122, 35 112 C 34 104, 36 101, 42 100 Z" fill="url(#chocoChip)" filter="url(#innerShadow)"/>
+                <path d="M 140 110 C 152 108, 160 120, 153 130 C 146 140, 132 136, 130 124 C 128 115, 132 111, 140 110 Z" fill="url(#chocoChip)" filter="url(#innerShadow)"/>
+                <path d="M 70 140 C 82 138, 88 150, 82 160 C 76 170, 60 166, 58 154 C 56 145, 60 141, 70 140 Z" fill="url(#chocoChip)" filter="url(#innerShadow)"/>
+                <path d="M 115 145 C 125 143, 130 152, 126 160 C 122 168, 108 165, 107 157 C 106 150, 109 146, 115 145 Z" fill="url(#chocoChip)" filter="url(#innerShadow)"/>
+
+                <!-- Блики -->
+                <circle cx="68" cy="50" r="2" fill="#a2633c" opacity="0.8"/>
+                <circle cx="130" cy="60" r="2.5" fill="#a2633c" opacity="0.8"/>
+                <circle cx="98" cy="98" r="3" fill="#a2633c" opacity="0.8"/>
+                <circle cx="45" cy="106" r="2" fill="#a2633c" opacity="0.8"/>
+                <circle cx="145" cy="116" r="2" fill="#a2633c" opacity="0.8"/>
+                <circle cx="72" cy="146" r="2" fill="#a2633c" opacity="0.8"/>
+            </svg>
+        </div>
+    </main>
+
+    <!-- Подсказка -->
+    <footer class="relative z-30 mb-6 text-center">
+        <p class="text-amber-900/50 text-sm md:text-base font-bold">
+            Кликай по печеньке! Прогресс сохраняется автоматически. 🍪
+        </p>
+    </footer>
+
+    <!-- Модальное окно сброса -->
+    <div id="reset-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
+        <div class="bg-white rounded-3xl p-6 max-w-xs w-full shadow-2xl border border-amber-100 text-center">
+            <h3 class="text-xl font-bold text-amber-950 mb-2">Сбросить прогресс?</h3>
+            <p class="text-amber-900/70 text-sm mb-6">Все накликанные печеньки будут удалены безвозвратно.</p>
+            <div class="flex gap-3">
+                <button id="cancel-reset" class="flex-1 py-2.5 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-all">
+                    Отмена
+                </button>
+                <button id="confirm-reset" class="flex-1 py-2.5 rounded-2xl bg-red-500 hover:bg-red-600 text-white font-bold text-sm transition-all shadow-md shadow-red-500/30">
+                    Сбросить
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Высокопроизводительный скрипт с сохранением в localStorage -->
+    <script>
+        const STORAGE_KEY = 'cookie_clicker_save_v1';
+        
+        // Инициализация игрового счета из localStorage
+        let score = 0;
+        try {
+            const savedScore = localStorage.getItem(STORAGE_KEY);
+            if (savedScore !== null) {
+                score = parseInt(savedScore, 10) || 0;
+            }
+        } catch (e) {
+            console.warn('localStorage недоступен:', e);
+        }
+
+        const scoreEl = document.getElementById('score');
+        const cookieEl = document.getElementById('cookie');
+        const fxLayer = document.getElementById('fx-layer');
+        const resetBtn = document.getElementById('reset-btn');
+        const resetModal = document.getElementById('reset-modal');
+        const confirmResetBtn = document.getElementById('confirm-reset');
+        const cancelResetBtn = document.getElementById('cancel-reset');
+
+        // Отобразить сохраненный счет
+        scoreEl.textContent = score.toLocaleString();
+
+        // Функция сохранения
+        function saveProgress() {
+            try {
+                localStorage.setItem(STORAGE_KEY, score.toString());
+            } catch (e) {
+                console.warn('Не удалось сохранить в localStorage:', e);
+            }
+        }
+
+        // Сохранение при выходе со страницы
+        window.addEventListener('beforeunload', saveProgress);
+
+        // Отключение контекстных меню и перетаскивания
+        document.addEventListener('dragstart', (e) => e.preventDefault());
+        document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // --- OBJECT POOLING ДЛЯ ТЕКСТА "+1" ---
+        const MAX_TEXTS = 15;
+        const textPool = [];
+        let textPoolIdx = 0;
+
+        for (let i = 0; i < MAX_TEXTS; i++) {
+            const el = document.createElement('div');
+            el.className = 'float-text';
+            el.textContent = '+1';
+            fxLayer.appendChild(el);
+            textPool.push({
+                el: el,
+                active: false,
+                x: 0, y: 0,
+                progress: 0,
+                rotation: 0
+            });
+        }
+
+        function spawnText(x, y) {
+            const item = textPool[textPoolIdx];
+            textPoolIdx = (textPoolIdx + 1) % MAX_TEXTS;
+
+            item.x = x;
+            item.y = y;
+            item.progress = 0;
+            item.rotation = (Math.random() - 0.5) * 20;
+            item.active = true;
+            item.el.style.display = 'block';
+        }
+
+        // --- OBJECT POOLING ДЛЯ ЧАСТИЦ-КРОШЕК ---
+        const MAX_CRUMBS = 24;
+        const CRUMBS_PER_CLICK = 3;
+        const crumbPool = [];
+        let crumbPoolIdx = 0;
+
+        const CRUMB_COLORS = ['#d99b52', '#a46025', '#5a3118', '#f3c88b'];
+
+        for (let i = 0; i < MAX_CRUMBS; i++) {
+            const el = document.createElement('div');
+            el.className = 'particle-crumb';
+            fxLayer.appendChild(el);
+            crumbPool.push({
+                el: el,
+                active: false,
+                x: 0, y: 0,
+                vx: 0, vy: 0,
+                size: 0,
+                progress: 0
+            });
+        }
+
+        function spawnCrumbs(x, y) {
+            for (let i = 0; i < CRUMBS_PER_CLICK; i++) {
+                const item = crumbPool[crumbPoolIdx];
+                crumbPoolIdx = (crumbPoolIdx + 1) % MAX_CRUMBS;
+
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 5 + 2;
+                
+                item.x = x;
+                item.y = y;
+                item.vx = Math.cos(angle) * speed;
+                item.vy = Math.sin(angle) * speed - 2;
+                item.size = Math.floor(Math.random() * 5) + 4;
+                item.progress = 0;
+                item.active = true;
+
+                item.el.style.width = item.size + 'px';
+                item.el.style.height = item.size + 'px';
+                item.el.style.backgroundColor = CRUMB_COLORS[Math.floor(Math.random() * CRUMB_COLORS.length)];
+                item.el.style.display = 'block';
+            }
+        }
+
+        // --- ЕДИНЫЙ ЦИКЛ АНИМАЦИИ (RAF) НА GPU ---
+        function renderLoop() {
+            // Обновление +1 текстов
+            for (let i = 0; i < MAX_TEXTS; i++) {
+                const item = textPool[i];
+                if (!item.active) continue;
+
+                item.progress += 0.035;
+                if (item.progress >= 1) {
+                    item.active = false;
+                    item.el.style.display = 'none';
+                    continue;
+                }
+
+                const currentY = item.y - (item.progress * 65);
+                const opacity = 1 - Math.pow(item.progress, 2);
+                const scale = 1 + (item.progress * 0.2);
+
+                item.el.style.transform = `translate3d(${item.x}px, ${currentY}px, 0) translate(-50%, -50%) scale(${scale}) rotate(${item.rotation}deg)`;
+                item.el.style.opacity = opacity;
+            }
+
+            // Обновление частиц-крошек
+            for (let i = 0; i < MAX_CRUMBS; i++) {
+                const item = crumbPool[i];
+                if (!item.active) continue;
+
+                item.progress += 0.04;
+                if (item.progress >= 1) {
+                    item.active = false;
+                    item.el.style.display = 'none';
+                    continue;
+                }
+
+                item.vx *= 0.95;
+                item.vy *= 0.95;
+                item.vy += 0.25;
+
+                item.x += item.vx;
+                item.y += item.vy;
+
+                const opacity = 1 - item.progress;
+
+                item.el.style.transform = `translate3d(${item.x}px, ${item.y}px, 0) translate(-50%, -50%)`;
+                item.el.style.opacity = opacity;
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        requestAnimationFrame(renderLoop);
+
+        // --- ОБРАБОТКА КЛИКОВ И ТАПОВ ---
+        let isScoreScheduled = false;
+
+        function handleClick(x, y) {
+            score++;
+            
+            // Запланированное сохранение и обновление DOM без просадки FPS
+            if (!isScoreScheduled) {
+                isScoreScheduled = true;
+                requestAnimationFrame(() => {
+                    scoreEl.textContent = score.toLocaleString();
+                    saveProgress();
+                    isScoreScheduled = false;
+                });
+            }
+
+            spawnText(x, y);
+            spawnCrumbs(x, y);
+        }
+
+        // Нажатия через PointerEvents
+        cookieEl.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            cookieEl.classList.add('is-pressed');
+            handleClick(e.clientX, e.clientY);
+        });
+
+        const releasePress = () => cookieEl.classList.remove('is-pressed');
+        window.addEventListener('pointerup', releasePress);
+        window.addEventListener('pointercancel', releasePress);
+
+        // --- УПРАВЛЕНИЕ СБРОСОМ ---
+        resetBtn.addEventListener('click', () => {
+            resetModal.classList.remove('hidden');
+        });
+
+        cancelResetBtn.addEventListener('click', () => {
+            resetModal.classList.add('hidden');
+        });
+
+        confirmResetBtn.addEventListener('click', () => {
+            score = 0;
+            scoreEl.textContent = '0';
+            saveProgress();
+            resetModal.classList.add('hidden');
+        });
+    </script>
+</body>
+</html>
